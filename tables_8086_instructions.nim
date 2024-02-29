@@ -44,8 +44,10 @@ import std/tables
 
 const OPCODE_MAP* = {
   0b100010'u8: "MOV", # mov_1: Register/memory to/from register
-  0b1100011'u8: "MOV", # ?, Immediate to register/memory
-  0b1011'u8: "MOV", # ?, "Immediate to register
+  0b1100011'u8: "MOV", # mov_2, Immediate to register/memory
+  0b1011'u8: "MOV", # mov_3, Immediate to register
+  0b1010000'u8: "MOV", # mov_4, Memory to accumulator
+  0b1010001'u8: "MOV", # mov_5, Accumulator to memory
 }.toTable
 
 const DST_MAP* = {
