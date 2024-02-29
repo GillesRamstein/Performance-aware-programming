@@ -1,6 +1,6 @@
 import std/strutils
 
-from parse_x86_machine_code import parseInstructions
+from parse_8086_machine_code import parseInstructions
 from utils import loadListingData
 
 
