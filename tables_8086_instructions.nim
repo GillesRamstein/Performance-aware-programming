@@ -89,34 +89,34 @@ const REGISTER_MAP* = {
 }.toTable
 
 const MOD00 = {
-  0b000'u8: "...",
-  0b001'u8: "...",
-  0b010'u8: "...",
-  0b011'u8: "...",
-  0b100'u8: "...",
-  0b101'u8: "...",
-  0b110'u8: "...",
-  0b111'u8: "...",
+  0b000'u8: "[BX + SI]",
+  0b001'u8: "[BX + DI]",
+  0b010'u8: "[BP + SI]",
+  0b011'u8: "[BP + DI]",
+  0b100'u8: "[SI]",
+  0b101'u8: "[DI]",
+  0b110'u8: "[data]",
+  0b111'u8: "[BX]",
 }.toTable
 const MOD01 = {
-  0b000'u8: "...",
-  0b001'u8: "...",
-  0b010'u8: "...",
-  0b011'u8: "...",
-  0b100'u8: "...",
-  0b101'u8: "...",
-  0b110'u8: "...",
-  0b111'u8: "...",
+  0b000'u8: "[BX + SI + data]",
+  0b001'u8: "[BX + DI + data]",
+  0b010'u8: "[BP + SI + data]",
+  0b011'u8: "[BP + DI + data]",
+  0b100'u8: "[SI + data]",
+  0b101'u8: "[DI + data]",
+  0b110'u8: "[BP + data]",
+  0b111'u8: "[BX + data]",
 }.toTable
 const MOD10 = {
-  0b000'u8: "...",
-  0b001'u8: "...",
-  0b010'u8: "...",
-  0b011'u8: "...",
-  0b100'u8: "...",
-  0b101'u8: "...",
-  0b110'u8: "...",
-  0b111'u8: "...",
+  0b000'u8: "[BX + SI + data]",
+  0b001'u8: "[BX + DI + data]",
+  0b010'u8: "[BP + SI + data]",
+  0b011'u8: "[BP + DI + data]",
+  0b100'u8: "[SI + data]",
+  0b101'u8: "[DI + data]",
+  0b110'u8: "[BP + data]",
+  0b111'u8: "[BX + data]",
 }.toTable
 
 const REG_MEM_MAP* = {
