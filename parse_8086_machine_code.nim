@@ -94,7 +94,6 @@ template ADDR(): InstrField = InstrField(kind: Bits_HasAddr, value: 1)
 template IP_INC8(): InstrField = InstrField(kind: Bits_HasLabel, value: 1)
 
 proc setD(value: uint8): InstrField = InstrField(kind: Bits_D, value: value)
-# proc setS(value: uint8): InstrField = InstrField(kind: Bits_S, value: value)
 
 proc instr(kind: string, nBytes: uint8, fields: seq[InstrField], dscr: string): InstrFormat =
   InstrFormat(kind: kind, dscr: dscr, nBytes:nBytes, fields: fields)
@@ -103,83 +102,49 @@ proc instr(kind: string, nBytes: uint8, fields: seq[InstrField], dscr: string): 
 # Instruction Definitions
 const instructions = @[
   # MOVs:
-  # 100010 d w mod reg r/m (disp-lo) (disp-hi)
   instr("mov", 2, @[B(6, 0b100010), D, W, MOD, REG, RM], "reg/mem to/from reg"),
-  # 1100011 w mod 000 r/m (disp-lo) (disp-hi) data dataIfW
   instr("mov", 2, @[B(7, 0b1100011), W, MOD, B(3, 0b000), RM, DATA, DATAW], "imd to reg/mem"),
-  # 1011 w reg data dataIfW
   instr("mov", 1, @[B(4, 0b1011), W, REG, DATA, DATAW, setD(1)], "imd to reg"),
-  # 1010000 w addr-lo addr-hi
   instr("mov", 1, @[B(7, 0b1010000), W, ADDR, setD(1)], "mem to acc"),
-  # 1010001 w addr-lo addr-hi
   instr("mov", 1, @[B(7, 0b1010001), W, ADDR], "acc to mem"),
 
   # ADDs:
-  # 000000 d q mod reg r/m (disp-lo) (disp-hi)
   instr("add", 2, @[B(6, 0b000000), D, W, MOD, REG, RM], "reg/mem with reg to either"),
-  # 100000 s w mod 000 r/m (disp-lo) (disp-hi) data dataIfSW=01
   instr("add", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b000), RM, DATA, DATAW], "imd to r/m"),
-  # 0000010 w data dataIfW=1
   instr("add", 1, @[B(7, 0b0000010), W, DATA, DATAW, setD(1)], "imd to acc"),
 
   # SUBs:
-  # 001010 d w mod reg r/m (disp-lo) (disp-hi)
   instr("sub", 2, @[B(6, 0b001010), D, W, MOD, REG, RM], "reg/mem and reg from either"),
-  # 100000 s w mod 101 r/m (disp-lo) (disp-hi) data dataIfSW=01
   instr("sub", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b101), RM, DATA, DATAW], "imd from r/m"),
-  # 0010110 w data dataIfW=1
   instr("sub", 1, @[B(7, 0b0010110), W, DATA, DATAW, setD(1)], "imd from acc"),
 
   # CMPs:
-  # 001110 d w mod reg r/m (disp-lo) (disp-hi)
   instr("cmp", 2, @[B(6, 0b001110), D, W, MOD, REG, RM], "reg/mem and reg"),
-  # 100000 s w mod 111 r/m (disp-lo) (disp-hi) data dataIfSW=1
   instr("cmp", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b111), RM, DATA, DATAW], "imd with r/m"),
-  # 0011110 w data
   # NOTE(gilles): added DATAW even though the manual specifies data to be 8 bits only
   instr("cmp", 1, @[B(7, 0b0011110), W, DATA, DATAW, setD(1)], "imd with acc"),
 
   # JMPs:
-  # JE / JZ
-  instr("je", 1, @[B(8, 0b01110100), IP_INC8], "jmp on equal/zero"),
-  # JL / JNGE
-  instr("jl", 1, @[B(8, 0b01111100), IP_INC8], "jmp on less/not greater or equal"),
-  # JLE / JNG
-  instr("jle", 1, @[B(8, 0b01111110), IP_INC8], "jmp on less or equal/not greater"),
-  # JB / JNAE
-  instr("jb", 1, @[B(8, 0b01110010), IP_INC8], "jmp on below/not above or equal"),
-  # JBE / JNA
-  instr("jbe", 1, @[B(8, 0b01110110), IP_INC8], "jmp on below or equal/not above"),
-  # JP / JPE
-  instr("jp", 1, @[B(8, 0b01111010), IP_INC8], "jmp on parity/parity even"),
-  # JO
-  instr("jo", 1, @[B(8, 0b01110000), IP_INC8], "jmp on overflow"),
-  # JS
-  instr("js", 1, @[B(8, 0b01111000), IP_INC8], "jmp on sign"),
-  # JNE / JNZ
-  instr("jne", 1, @[B(8, 0b01110101), IP_INC8], "jmp on not equal/not zero"),
-  # JNL / JGE
-  instr("jnl", 1, @[B(8, 0b01111101), IP_INC8], "jmp on not less/greater or equal"),
-  # JNLE /JG
-  instr("jnle", 1, @[B(8, 0b01111111), IP_INC8], "jmp on not less or equal/greater"),
-  # JNB / JAE
-  instr("jnb", 1, @[B(8, 0b01110011), IP_INC8], "jmp on not below/above or equal"),
-  # JNBE / JA
-  instr("jnbe", 1, @[B(8, 0b01110111), IP_INC8], "jmp on not below or equal/above"),
-  # JNP / JPO
-  instr("jnp", 1, @[B(8, 0b01111011), IP_INC8], "jmp on not par/par odd"),
-  # JNO
-  instr("jno", 1, @[B(8, 0b01110001), IP_INC8], "jmp on not overflow"),
-  # JNS
-  instr("jns", 1, @[B(8, 0b01111001), IP_INC8], "jmp on not sign"),
-  # LOOP
-  instr("loop", 1, @[B(8, 0b11100010), IP_INC8], "loop CX times"),
-  # LOOPZ / LOOPE
-  instr("loopz", 1, @[B(8, 0b11100001), IP_INC8], "loop while zero/equal"),
-  # LOOPNZ / LOOPNE
+  instr("je",     1, @[B(8, 0b01110100), IP_INC8], "jmp on equal/zero"),
+  instr("jl",     1, @[B(8, 0b01111100), IP_INC8], "jmp on less/not greater or equal"),
+  instr("jle",    1, @[B(8, 0b01111110), IP_INC8], "jmp on less or equal/not greater"),
+  instr("jb",     1, @[B(8, 0b01110010), IP_INC8], "jmp on below/not above or equal"),
+  instr("jbe",    1, @[B(8, 0b01110110), IP_INC8], "jmp on below or equal/not above"),
+  instr("jp",     1, @[B(8, 0b01111010), IP_INC8], "jmp on parity/parity even"),
+  instr("jo",     1, @[B(8, 0b01110000), IP_INC8], "jmp on overflow"),
+  instr("js",     1, @[B(8, 0b01111000), IP_INC8], "jmp on sign"),
+  instr("jne",    1, @[B(8, 0b01110101), IP_INC8], "jmp on not equal/not zero"),
+  instr("jnl",    1, @[B(8, 0b01111101), IP_INC8], "jmp on not less/greater or equal"),
+  instr("jnle",   1, @[B(8, 0b01111111), IP_INC8], "jmp on not less or equal/greater"),
+  instr("jnb",    1, @[B(8, 0b01110011), IP_INC8], "jmp on not below/above or equal"),
+  instr("jnbe",   1, @[B(8, 0b01110111), IP_INC8], "jmp on not below or equal/above"),
+  instr("jnp",    1, @[B(8, 0b01111011), IP_INC8], "jmp on not par/par odd"),
+  instr("jno",    1, @[B(8, 0b01110001), IP_INC8], "jmp on not overflow"),
+  instr("jns",    1, @[B(8, 0b01111001), IP_INC8], "jmp on not sign"),
+  instr("loop",   1, @[B(8, 0b11100010), IP_INC8], "loop CX times"),
+  instr("loopz",  1, @[B(8, 0b11100001), IP_INC8], "loop while zero/equal"),
   instr("loopnz", 1, @[B(8, 0b11100000), IP_INC8], "loop while not zero/equal"),
-  # JCXZ
-  instr("jcxz", 1, @[B(8, 0b11100011), IP_INC8], "jmp on CX zero"),
+  instr("jcxz",   1, @[B(8, 0b11100011), IP_INC8], "jmp on CX zero"),
 ]
 
 
@@ -272,13 +237,6 @@ proc disassemble8086MachineCode*(byteStream: seq[byte]): seq[string] =
         wideData = hasDataW and w == 0b1 and s == 0b0
         hasLabel = parsedInstrFields[Bits_HasLabel] == 0b1
 
-      # echo(&"HasDisp8: {hasDisp8}")
-      # echo(&"HasDisp16: {hasDisp16}")
-      # echo(&"HasDirectAddr: {hasDirectAddr}")
-      # echo(&"HasAddr: {hasAddr}")
-
-      # NOTE: order matters: disp appears always before data
-
       if hasDisp8 or hasLabel:
         dispBits = extendSign(byteStream[instrPointer])
         dispString = $dispBits
@@ -295,10 +253,6 @@ proc disassemble8086MachineCode*(byteStream: seq[byte]): seq[string] =
           dataString = $dataBits
           instrPointer += 2
         else:
-          # if s == 0b0:
-          #   dataBits = concatTwoBytes(byteStream[instrPointer], 0b00000000'u8)
-          # else:
-          #   dataBits = extendSign(byteStream[instrPointer])
           dataBits = extendSign(byteStream[instrPointer])
           dataString = $dataBits
           instrPointer += 1
@@ -357,8 +311,6 @@ proc disassemble8086MachineCode*(byteStream: seq[byte]): seq[string] =
           else:
             assert false, "unreachable"
 
-        # TODO(gilles): are byte/word keywords always in front of address or can they
-        # also be in front if the immediate value?
         if mode != 0b11:
           if w == 0b0:
             operand2 = &"byte {operand2}"
