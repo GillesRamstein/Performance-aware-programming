@@ -1,64 +1,24 @@
 import std/[bitops, sequtils, strformat, strutils, sugar, tables]
 
-const VERBOSE: bool = false
-
+# Debug print on/off
 const
-  REGISTER = {
-    0b000'u8: {0b0'u8: "AL", 0b1'u8: "AX"}.toTable,
-    0b001'u8: {0b0'u8: "CL", 0b1'u8: "CX"}.toTable,
-    0b010'u8: {0b0'u8: "DL", 0b1'u8: "DX"}.toTable,
-    0b011'u8: {0b0'u8: "BL", 0b1'u8: "BX"}.toTable,
-    0b100'u8: {0b0'u8: "AH", 0b1'u8: "SP"}.toTable,
-    0b101'u8: {0b0'u8: "CH", 0b1'u8: "BP"}.toTable,
-    0b110'u8: {0b0'u8: "DH", 0b1'u8: "SI"}.toTable,
-    0b111'u8: {0b0'u8: "BH", 0b1'u8: "DI"}.toTable,
-  }.toTable
-
-  MOD00 = {
-    0b000'u8: "[BX + SI]",
-    0b001'u8: "[BX + DI]",
-    0b010'u8: "[BP + SI]",
-    0b011'u8: "[BP + DI]",
-    0b100'u8: "[SI]",
-    0b101'u8: "[DI]",
-    0b110'u8: "[data]",
-    0b111'u8: "[BX]",
-  }.toTable
-
-  MOD01 = {
-    0b000'u8: "[BX + SI + D8]",
-    0b001'u8: "[BX + DI + D8]",
-    0b010'u8: "[BP + SI + D8]",
-    0b011'u8: "[BP + DI + D8]",
-    0b100'u8: "[SI + D8]",
-    0b101'u8: "[DI + D8]",
-    0b110'u8: "[BP + D8]",
-    0b111'u8: "[BX + D8]",
-  }.toTable
-
-  MOD10 = {
-    0b000'u8: "[BX + SI + D16]",
-    0b001'u8: "[BX + DI + D16]",
-    0b010'u8: "[BP + SI + D16]",
-    0b011'u8: "[BP + DI + D16]",
-    0b100'u8: "[SI + D16]",
-    0b101'u8: "[DI + D16]",
-    0b110'u8: "[BP + D16]",
-    0b111'u8: "[BX + D16]",
-  }.toTable
+  VERBOSE: bool = false
 
 
+# Type Definitions
 type
   InstrFieldKind = enum
     Bits_Literal
-    Bits_MOD,
-    Bits_REG,
-    Bits_RM,
-    Bits_D,
+    Bits_MOD
+    Bits_REG
+    Bits_RM
+    Bits_D
     Bits_W
+    Bits_S
     Bits_HasData
     Bits_HasDataW
     Bits_HasAddr
+    Bits_HasLabel
 
   InstrField = object
     kind: InstrFieldKind
@@ -70,24 +30,79 @@ type
     nBytes: uint8
     fields: seq[InstrField]
 
+  DecodeError = object of CatchableError
 
+
+# Constants
+const
+  REGISTER = {
+    0b000'u16: {0b0'u16: "AL", 0b1'u16: "AX"}.toTable,
+    0b001'u16: {0b0'u16: "CL", 0b1'u16: "CX"}.toTable,
+    0b010'u16: {0b0'u16: "DL", 0b1'u16: "DX"}.toTable,
+    0b011'u16: {0b0'u16: "BL", 0b1'u16: "BX"}.toTable,
+    0b100'u16: {0b0'u16: "AH", 0b1'u16: "SP"}.toTable,
+    0b101'u16: {0b0'u16: "CH", 0b1'u16: "BP"}.toTable,
+    0b110'u16: {0b0'u16: "DH", 0b1'u16: "SI"}.toTable,
+    0b111'u16: {0b0'u16: "BH", 0b1'u16: "DI"}.toTable,
+  }.toTable
+
+  MOD00 = {
+    0b000'u16: "[BX + SI]",
+    0b001'u16: "[BX + DI]",
+    0b010'u16: "[BP + SI]",
+    0b011'u16: "[BP + DI]",
+    0b100'u16: "[SI]",
+    0b101'u16: "[DI]",
+    0b110'u16: "[data]",
+    0b111'u16: "[BX]",
+  }.toTable
+
+  MOD01 = {
+    0b000'u16: "[BX + SI + D8]",
+    0b001'u16: "[BX + DI + D8]",
+    0b010'u16: "[BP + SI + D8]",
+    0b011'u16: "[BP + DI + D8]",
+    0b100'u16: "[SI + D8]",
+    0b101'u16: "[DI + D8]",
+    0b110'u16: "[BP + D8]",
+    0b111'u16: "[BX + D8]",
+  }.toTable
+
+  MOD10 = {
+    0b000'u16: "[BX + SI + D16]",
+    0b001'u16: "[BX + DI + D16]",
+    0b010'u16: "[BP + SI + D16]",
+    0b011'u16: "[BP + DI + D16]",
+    0b100'u16: "[SI + D16]",
+    0b101'u16: "[DI + D16]",
+    0b110'u16: "[BP + D16]",
+    0b111'u16: "[BX + D16]",
+  }.toTable
+
+
+# Instruction Definition Helpers
 proc B(n: uint8, value: uint8): InstrField = InstrField(kind: Bits_Literal, nBits: n, value: value)
 template D(): InstrField = InstrField(kind: Bits_D, nBits: 1)
 template W(): InstrField = InstrField(kind: Bits_W, nBits: 1)
+template S(): InstrField = InstrField(kind: Bits_S, nBits: 1)
 template MOD(): InstrField = InstrField(kind: Bits_MOD, nBits: 2)
 template REG(): InstrField = InstrField(kind: Bits_REG, nBits: 3)
 template RM(): InstrField = InstrField(kind: Bits_RM, nBits: 3)
 template DATA(): InstrField = InstrField(kind: Bits_HasData, value: 1)
 template DATAW(): InstrField = InstrField(kind: Bits_HasDataW, value: 1)
 template ADDR(): InstrField = InstrField(kind: Bits_HasAddr, value: 1)
+template IP_INC8(): InstrField = InstrField(kind: Bits_HasLabel, value: 1)
 
 proc setD(value: uint8): InstrField = InstrField(kind: Bits_D, value: value)
+# proc setS(value: uint8): InstrField = InstrField(kind: Bits_S, value: value)
 
 proc instr(kind: string, nBytes: uint8, fields: seq[InstrField], dscr: string): InstrFormat =
   InstrFormat(kind: kind, dscr: dscr, nBytes:nBytes, fields: fields)
 
 
+# Instruction Definitions
 const instructions = @[
+  # MOVs:
   # 100010 d w mod reg r/m (disp-lo) (disp-hi)
   instr("mov", 2, @[B(6, 0b100010), D, W, MOD, REG, RM], "reg/mem to/from reg"),
   # 1100011 w mod 000 r/m (disp-lo) (disp-hi) data dataIfW
@@ -98,6 +113,73 @@ const instructions = @[
   instr("mov", 1, @[B(7, 0b1010000), W, ADDR, setD(1)], "mem to acc"),
   # 1010001 w addr-lo addr-hi
   instr("mov", 1, @[B(7, 0b1010001), W, ADDR], "acc to mem"),
+
+  # ADDs:
+  # 000000 d q mod reg r/m (disp-lo) (disp-hi)
+  instr("add", 2, @[B(6, 0b000000), D, W, MOD, REG, RM], "reg/mem with reg to either"),
+  # 100000 s w mod 000 r/m (disp-lo) (disp-hi) data dataIfSW=01
+  instr("add", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b000), RM, DATA, DATAW], "imd to r/m"),
+  # 0000010 w data dataIfW=1
+  instr("add", 1, @[B(7, 0b0000010), W, DATA, DATAW, setD(1)], "imd to acc"),
+
+  # SUBs:
+  # 001010 d w mod reg r/m (disp-lo) (disp-hi)
+  instr("sub", 2, @[B(6, 0b001010), D, W, MOD, REG, RM], "reg/mem and reg from either"),
+  # 100000 s w mod 101 r/m (disp-lo) (disp-hi) data dataIfSW=01
+  instr("sub", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b101), RM, DATA, DATAW], "imd from r/m"),
+  # 0010110 w data dataIfW=1
+  instr("sub", 1, @[B(7, 0b0010110), W, DATA, DATAW, setD(1)], "imd from acc"),
+
+  # CMPs:
+  # 001110 d w mod reg r/m (disp-lo) (disp-hi)
+  instr("cmp", 2, @[B(6, 0b001110), D, W, MOD, REG, RM], "reg/mem and reg"),
+  # 100000 s w mod 111 r/m (disp-lo) (disp-hi) data dataIfSW=1
+  instr("cmp", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b111), RM, DATA, DATAW], "imd with r/m"),
+  # 0011110 w data
+  # NOTE(gilles): added DATAW even though the manual specifies data to be 8 bits only
+  instr("cmp", 1, @[B(7, 0b0011110), W, DATA, DATAW, setD(1)], "imd with acc"),
+
+  # JMPs:
+  # JE / JZ
+  instr("je", 1, @[B(8, 0b01110100), IP_INC8], "jmp on equal/zero"),
+  # JL / JNGE
+  instr("jl", 1, @[B(8, 0b01111100), IP_INC8], "jmp on less/not greater or equal"),
+  # JLE / JNG
+  instr("jle", 1, @[B(8, 0b01111110), IP_INC8], "jmp on less or equal/not greater"),
+  # JB / JNAE
+  instr("jb", 1, @[B(8, 0b01110010), IP_INC8], "jmp on below/not above or equal"),
+  # JBE / JNA
+  instr("jbe", 1, @[B(8, 0b01110110), IP_INC8], "jmp on below or equal/not above"),
+  # JP / JPE
+  instr("jp", 1, @[B(8, 0b01111010), IP_INC8], "jmp on parity/parity even"),
+  # JO
+  instr("jo", 1, @[B(8, 0b01110000), IP_INC8], "jmp on overflow"),
+  # JS
+  instr("js", 1, @[B(8, 0b01111000), IP_INC8], "jmp on sign"),
+  # JNE / JNZ
+  instr("jne", 1, @[B(8, 0b01110101), IP_INC8], "jmp on not equal/not zero"),
+  # JNL / JGE
+  instr("jnl", 1, @[B(8, 0b01111101), IP_INC8], "jmp on not less/greater or equal"),
+  # JNLE /JG
+  instr("jnle", 1, @[B(8, 0b01111111), IP_INC8], "jmp on not less or equal/greater"),
+  # JNB / JAE
+  instr("jnb", 1, @[B(8, 0b01110011), IP_INC8], "jmp on not below/above or equal"),
+  # JNBE / JA
+  instr("jnbe", 1, @[B(8, 0b01110111), IP_INC8], "jmp on not below or equal/above"),
+  # JNP / JPO
+  instr("jnp", 1, @[B(8, 0b01111011), IP_INC8], "jmp on not par/par odd"),
+  # JNO
+  instr("jno", 1, @[B(8, 0b01110001), IP_INC8], "jmp on not overflow"),
+  # JNS
+  instr("jns", 1, @[B(8, 0b01111001), IP_INC8], "jmp on not sign"),
+  # LOOP
+  instr("loop", 1, @[B(8, 0b11100010), IP_INC8], "loop CX times"),
+  # LOOPZ / LOOPE
+  instr("loopz", 1, @[B(8, 0b11100001), IP_INC8], "loop while zero/equal"),
+  # LOOPNZ / LOOPNE
+  instr("loopnz", 1, @[B(8, 0b11100000), IP_INC8], "loop while not zero/equal"),
+  # JCXZ
+  instr("jcxz", 1, @[B(8, 0b11100011), IP_INC8], "jmp on CX zero"),
 ]
 
 
@@ -116,50 +198,64 @@ proc extendSign(b: byte): int16 =
     result = (0b0000_0000.int16 shl 8) or b.int16
 
 
-proc bitsMatchOpCode(bits: byte, op: InstrField): bool =
-  bits.bitsliced(8-op.nBits.int ..< 8) == op.value
+proc parseInstructionFields(bytes: seq[byte], instr: InstrFormat): array[InstrFieldKind, uint16] =
+  var
+    byteIndex, bitIndex: int
+    opCodeShift: int = 0
 
+  for field in instr.fields:
 
-proc parseInstructionFields(bytes: seq[byte], instr: InstrFormat): array[InstrFieldKind, uint8] =
-  const N = 16
-  let instrBits: uint16 = if bytes.len == 1: bytes[0].uint16 shl 8 else: concatTwoBytes(bytes[1], bytes[0]).uint16
-  if VERBOSE: echo instrBits.int.toBin(16)
-  var bitIndex: int = instr.fields[0].nBits.int
-  for field in instr.fields[1 .. ^1]:
-    if field.nBits > 0:
-      # parsed values
-      result[field.kind] = instrBits.bitsliced(N - bitIndex - field.nBits.int ..< N - bitIndex).uint8
-      bitIndex += field.nBits.int
+    if field.kind == Bits_Literal:
+      # Test if next bits in the byte stream match the op code bits
+      if bytes[byteIndex].bitsliced(8-bitIndex-field.nBits.int ..< 8-bitIndex) == field.value:
+        result[field.kind] = result[field.kind] shl opCodeShift or field.value
+        opCodeShift = field.nBits.int
+
+        if VERBOSE:
+          echo ">>> ", "opCodeShift ", result[field.kind].int.toBin(field.nBits)
+
+      else:
+        raise newException(DecodeError, "Op code bits do not match")
+
     else:
-      # configured values
-      result[field.kind] = field.value
+      if field.nBits > 0:
+        result[field.kind] = bytes[byteIndex].bitsliced(
+          8 - bitIndex - field.nBits.int ..< 8 - bitIndex
+        ).uint8
+      else:
+        result[field.kind] = field.value
+
+    bitIndex += field.nBits.int
+    if bitIndex >= 8:
+      bitIndex = 0
+      byteIndex += 1
 
 
-proc parseInstructions*(byteStream: seq[byte]): seq[string] =
+proc disassemble8086MachineCode*(byteStream: seq[byte]): seq[string] =
   var instrPointer: int = 0
 
   while instrPointer < byteStream.high:
     let lastIdx = instrPointer
-    # echo "Instruction Pointer: ", instrPointer
 
     for instr in instructions:
-      if not bitsMatchOpCode(byteStream[instrPointer], instr.fields[0]):
+      let context = byteStream[instrPointer ..< instrPointer + instr.nBytes.int]
+      var parsedInstrFields: array[InstrFieldKind, uint16]
+      try:
+        parsedInstrFields = parseInstructionFields(context, instr)
+      except DecodeError:
         continue
 
-      let
-        opCode = instr.kind
-        parsedInstrFields = parseInstructionFields(
-          byteStream[instrPointer ..< instrPointer + instr.nBytes.int], instr
-        )
+      if VERBOSE:
+        echo byteStream[instrPointer ..< instrPointer + instr.nBytes.int].mapIt(it.int.toBin(8)).join(" ")
       instrPointer += instr.nBytes.int
 
       let
         mode = parsedInstrFields[Bits_MOD]
         reg = parsedInstrFields[Bits_REG]
         rm = parsedInstrFields[Bits_RM]
-        d = parsedInstrFields[Bits_D]
-        w = parsedInstrFields[Bits_W]
-
+        d = parsedInstrFields[Bits_D] # Instruction SOURCE(d=0) or DESTINATION(d=1) is specified in reg field
+        w = parsedInstrFields[Bits_W] # Instruction operates on BYTE(w=0) or WORD(w=1) data
+        s = parsedInstrFields[Bits_S] # No sign extenstion / Sign extend 8-bit immediata data to 16 bits if W=1
 
       var
         operand1, operand2, dataString, dispString: string
@@ -167,40 +263,50 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
 
       let
         instrFields: seq[InstrFieldKind] = instr.fields.map(x => x.kind)
-        hasDisp8 = (mode == 0b01)
-        hasDisp16 = (mode == 0b10) or (mode == 0b00 and rm == 0b110)
-        hasData = parsedInstrFields[Bits_HasData] == 0b1
-        # hasDataW = parsedInstrFields[Bits_HasDataW] == 0b1
         hasAddr = parsedInstrFields[Bits_HasAddr] == 0b1
         hasDirectAddr = (mode == 0b00) and (rm == 0b110)
+        hasDisp8 = (mode == 0b01)
+        hasDisp16 = (mode == 0b10) or hasDirectAddr
+        hasData = parsedInstrFields[Bits_HasData] == 0b1
+        hasDataW = parsedInstrFields[Bits_HasDataW] == 0b1
+        wideData = hasDataW and w == 0b1 and s == 0b0
+        hasLabel = parsedInstrFields[Bits_HasLabel] == 0b1
 
-      if hasDisp8:
-        dispBIts = extendSign(byteStream[instrPointer])
+      # echo(&"HasDisp8: {hasDisp8}")
+      # echo(&"HasDisp16: {hasDisp16}")
+      # echo(&"HasDirectAddr: {hasDirectAddr}")
+      # echo(&"HasAddr: {hasAddr}")
+
+      # NOTE: order matters: disp appears always before data
+
+      if hasDisp8 or hasLabel:
+        dispBits = extendSign(byteStream[instrPointer])
         dispString = $dispBits
         instrPointer += 1
 
       if hasDisp16:
-        dispBIts = concatTwoBytes(byteStream[instrPointer], byteStream[instrPointer + 1])
+        dispBits = concatTwoBytes(byteStream[instrPointer], byteStream[instrPointer + 1])
         dispString = $dispBits
         instrPointer += 2
 
       if hasData:
-        if w == 0b0:
-          dataBits = extendSign(byteStream[instrPointer])
-          dataString = $dataBits
-          instrPointer += 1
-        else:
+        if wideData:
           dataBits = concatTwoBytes(byteStream[instrPointer], byteStream[instrPointer + 1])
           dataString = $dataBits
           instrPointer += 2
+        else:
+          # if s == 0b0:
+          #   dataBits = concatTwoBytes(byteStream[instrPointer], 0b00000000'u8)
+          # else:
+          #   dataBits = extendSign(byteStream[instrPointer])
+          dataBits = extendSign(byteStream[instrPointer])
+          dataString = $dataBits
+          instrPointer += 1
 
       if hasAddr:
         dataBits = concatTwoBytes(byteStream[instrPointer], byteStream[instrPointer + 1])
         dataString = &"[{dataBits}]"
         instrPointer += 2
-
-      if hasDirectAddr:
-        dataString =  &"[{dispBits}]"
 
       if VERBOSE:
         echo(&"data: ", dataString)
@@ -212,8 +318,8 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
         operand1 = REGISTER[reg][w]
         case mode:
           of 0b00:
-            if rm == 0b110:
-              operand2 = dataString
+            if hasDirectAddr:
+              operand2 = &"[{dispBits}]"
             else:
               operand2 = MOD00[rm]
           of 0b01:
@@ -223,7 +329,7 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
           of 0b11:
             operand2 = REGISTER[rm][w]
           else:
-            assert false, "unreachable"
+            doAssert false, "unreachable"
 
       # immediate to/from register
       elif Bits_REG in instrFields:
@@ -234,15 +340,12 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
       # immediate to/from register/memory
       elif Bits_RM in instrFields:
         if VERBOSE: echo "imm <-> r/m"
-        if w == 0b0:
-          operand1 = &"byte {dataString}"
-        else:
-          operand1 = &"word {dataString}"
+        operand1 = dataString
 
         case mode:
           of 0b00:
-            if rm == 0b110:
-              operand2 = dataString
+            if hasDirectAddr:
+              operand2 = &"[{dispBits}]"
             else:
               operand2 = MOD00[rm]
           of 0b01:
@@ -254,10 +357,18 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
           else:
             assert false, "unreachable"
 
+        # TODO(gilles): are byte/word keywords always in front of address or can they
+        # also be in front if the immediate value?
+        if mode != 0b11:
+          if w == 0b0:
+            operand2 = &"byte {operand2}"
+          else:
+            operand2 = &"word {operand2}"
+
       # memory to/from accumulator
       else:
         if VERBOSE: echo "mem -> acc"
-        operand1 = {0b0'u8: "AL", 0b1'u8: "AX"}.toTable[w]
+        operand1 = {0b0'u16: "AL", 0b1'u16: "AX"}.toTable[w]
         operand2 = dataString
 
       # Direction
@@ -267,9 +378,16 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
         operand1 = operand2
         operand2 = tmp
 
-      let x86Instruction: string = formatInstruction(&"{opcode} {operand2}, {operand1}")
-      if VERBOSE: echo x86Instruction
+      var x86Instruction: string
+      if hasLabel:
+        x86Instruction = replace(&"{instr.kind} $ + 2 + {dispString}", "+ -", "- ")
+      else:
+        x86Instruction = formatInstruction(&"{instr.kind} {operand2}, {operand1}")
       result.add(x86Instruction)
+
+      if VERBOSE:
+        echo(x86Instruction & "\n")
+
       break
 
     if instrPointer == lastIdx:
@@ -278,17 +396,14 @@ proc parseInstructions*(byteStream: seq[byte]): seq[string] =
 
 
 when isMainModule:
-  from utils import loadListingData
+  from utils import test_part1_listing
   for fname in @[
     "listing_0037_single_register_mov.asm",
     "listing_0038_many_register_mov.asm",
     "listing_0039_more_movs.asm",
     "listing_0040_challenge_movs.asm",
+    "listing_0041_add_sub_cmp_jnz.asm",
   ]:
-    let bytes = loadListingData(fname, "part1")
-    if VERBOSE:
-      discard parseInstructions(bytes)
-    else:
-      echo "> Parsed x86 intel assembly:"
-      for asmx86 in parseInstructions(bytes):
-        echo asmx86.toLower
+    echo fname
+    test_part1_listing(fname, verbose=false)
+    echo ""

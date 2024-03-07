@@ -1,20 +1,4 @@
-import std/strutils
-
-from parse_8086_machine_code import parseInstructions
-from utils import loadListingData
-
-
-const PART = "part1"
-const FNAME = "listing_0039_more_movs.asm"
-
-
-proc parse_listing_0037_single_register() =
-  let bytes = loadListingData(FNAME, PART)
-
-  echo "> Parsed x86 intel assembly:"
-  for asmx86 in parseInstructions(bytes):
-    echo ">   ", asmx86.toLower
-
+from utils import test_part1_listing
 
 when isMainModule:
-  parse_listing_0037_single_register()
+  test_part1_listing("listing_0039_more_movs.asm")
