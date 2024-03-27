@@ -2,7 +2,7 @@ import std/[bitops, sequtils, strformat, strutils, sugar, tables]
 
 # Debug print on/off
 const
-  VERBOSE: bool = false
+  VERBOSE: bool = true
 
 
 # Type Definitions
@@ -94,6 +94,7 @@ template ADDR(): InstrField = InstrField(kind: Bits_HasAddr, value: 1)
 template IP_INC8(): InstrField = InstrField(kind: Bits_HasLabel, value: 1)
 
 proc setD(value: uint8): InstrField = InstrField(kind: Bits_D, value: value)
+proc setW(value: uint8): InstrField = InstrField(kind: Bits_W, value: value)
 
 proc instr(kind: string, nBytes: uint8, fields: seq[InstrField], dscr: string): InstrFormat =
   InstrFormat(kind: kind, dscr: dscr, nBytes:nBytes, fields: fields)
@@ -107,7 +108,14 @@ const instructions = @[
   instr("mov", 1, @[B(4, 0b1011), W, REG, DATA, DATAW, setD(1)], "imd to reg"),
   instr("mov", 1, @[B(7, 0b1010000), W, ADDR, setD(1)], "mem to acc"),
   instr("mov", 1, @[B(7, 0b1010001), W, ADDR], "acc to mem"),
+  # instr("mov", 1, @[B(8, 0b10001110), MOD, 0, SR, RM], "reg/mem to segment reg"),
+  # instr("mov", 1, @[B(8, 0b10001100), MOD, 0, SR, RM], "segment reg to reg/mem"),
 
+  # PUSHs
+  instr("push", 2, @[B(8, 0b11111111), MOD, B(3, 0b110), RM, setW(1)], "reg/mem"),
+  instr("push", 1, @[B(5, 0b01010), REG, setW(1)], "reg"),
+  instr("push", 1, @[B(3, 0b000), REG, B(3, 0b110), setW(1)], "seg reg"),
+  
   # ADDs:
   instr("add", 2, @[B(6, 0b000000), D, W, MOD, REG, RM], "reg/mem with reg to either"),
   instr("add", 2, @[B(6, 0b100000), S, W, MOD, B(3, 0b000), RM, DATA, DATAW], "imd to r/m"),
@@ -145,6 +153,7 @@ const instructions = @[
   instr("loopz",  1, @[B(8, 0b11100001), IP_INC8], "loop while zero/equal"),
   instr("loopnz", 1, @[B(8, 0b11100000), IP_INC8], "loop while not zero/equal"),
   instr("jcxz",   1, @[B(8, 0b11100011), IP_INC8], "jmp on CX zero"),
+
 ]
 
 
